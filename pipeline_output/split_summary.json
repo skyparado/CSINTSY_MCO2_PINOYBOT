@@ -1,0 +1,35 @@
+{
+  "random_seed": 42,
+  "fractions": {
+    "train": 0.7,
+    "val": 0.15,
+    "test": 0.15
+  },
+  "train": {
+    "n_words": 29252,
+    "label_distribution": {
+      "FIL": 22491,
+      "ENG": 2451,
+      "OTH": 4164,
+      "CS": 146
+    }
+  },
+  "val": {
+    "n_words": 6546,
+    "label_distribution": {
+      "FIL": 4986,
+      "OTH": 974,
+      "ENG": 564,
+      "CS": 22
+    }
+  },
+  "test": {
+    "n_words": 6109,
+    "label_distribution": {
+      "OTH": 886,
+      "FIL": 4734,
+      "ENG": 459,
+      "CS": 30
+    }
+  }
+}
