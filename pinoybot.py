@@ -43,7 +43,7 @@ def _load_model():
         )
 
     try:
-        import sklearn_crfsuite  # noqa: F401  (needed to unpickle the CRF)
+        import sklearn_crfsuite  
     except ImportError as exc:
         raise ImportError(
             "pinoybot's model is a CRF, which needs the 'sklearn-crfsuite' "
@@ -62,8 +62,7 @@ def tag_language(tokens: List[str]) -> List[str]:
     Returns:
         tags: List of predicted tags ("ENG", "FIL", "CS", or "OTH"), one per token.
     """
-    # Edge case: empty input -> empty output. Nothing to predict, and this
-    # avoids calling the pipeline on an empty feature list.
+    # Edge case: empty input -> empty output. 
     if not tokens:
         return []
     
@@ -105,3 +104,23 @@ if __name__ == "__main__":
     print("Tokens:", example_tokens)
     tags = tag_language(example_tokens)
     print("Tags:", tags)
+    
+    # Demo Examples
+    #demo_examples = [
+     #   ["I", "love", "you"],         
+     #  ["Mahal", "kita", "."],        
+     #   ["Ang", "cute", "mo"],          
+     #   ["Kain", "tayo", "later"],     
+     #   ["Sige", "na", "please"],      
+     #   ["Grabe", "ang", "ganda"],     
+     #  ["See", "you", "bukas"],        
+     #   ["Wala", "akong", "pera"],      
+     #   ["Text", "mo", "ko"],           
+    #]
+
+    #for i, tokens in enumerate(demo_examples, start=1):
+    #    tags = tag_language(tokens)
+    #    print(f"\nDemo {i}:")
+    #    print("Tokens:", tokens)
+    #    print("Tags:  ", tags)
+   
