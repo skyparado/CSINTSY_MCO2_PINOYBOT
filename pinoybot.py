@@ -52,8 +52,7 @@ def tag_language(tokens: List[str]) -> List[str]:
     Returns:
         tags: List of predicted tags ("ENG", "FIL", "CS", or "OTH"), one per token.
     """
-    # Edge case: empty input -> empty output. Nothing to predict, and this
-    # avoids calling the pipeline on an empty feature list.
+    # Edge case: empty input -> empty output. 
     if not tokens:
         return []
     
@@ -95,23 +94,3 @@ if __name__ == "__main__":
     print("Tokens:", example_tokens)
     tags = tag_language(example_tokens)
     print("Tags:", tags)
-    print("Tags:", tags)
-    
-    # Demo Examples
-    #demo_examples = [
-     #   ["I", "love", "you"],         
-     #  ["Mahal", "kita", "."],        
-     #   ["Ang", "cute", "mo"],          
-     #   ["Kain", "tayo", "later"],     
-     #   ["Sige", "na", "please"],      
-     #   ["Grabe", "ang", "ganda"],     
-     #  ["See", "you", "bukas"],        
-     #   ["Wala", "akong", "pera"],      
-     #   ["Text", "mo", "ko"],           
-    #]
-
-    #for i, tokens in enumerate(demo_examples, start=1):
-    #    tags = tag_language(tokens)
-    #    print(f"\nDemo {i}:")
-    #    print("Tokens:", tokens)
-    #    print("Tags:  ", tags)
