@@ -207,8 +207,14 @@ def split_dataset(
     # if any sentence_id appears in two splits, this crashes immediately.
 
     def subset(idx):
-        return {"X": [X[i] for i in idx], "y": [y[i] for i in idx]}
-        # given a list of index numbers, pull out just those X's and y's
+        return {"X": [X[i] for i in idx],
+                "y": [y[i] for i in idx],
+                "groups": [groups[i] for i in idx]}
+        # given a list of index numbers, pull out just those X's and y's.
+        # "groups" (the sentence_id each word came from) is carried along too:
+        # the CRF is a SEQUENCE model, so it needs to know where each sentence
+        # starts and ends in order to rebuild them. The word-level X/y are kept
+        # exactly as before so nothing that already reads them has to change.
 
     return {"train": subset(train_idx), "val": subset(val_idx), "test": subset(test_idx)}
     # final result: a dict of 3 buckets, each holding its own X and y

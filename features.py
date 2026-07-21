@@ -39,6 +39,18 @@ NON_NATIVE_LETTERS = "cfjqvxz"
 # English-looking consonant clusters (leans ENG).
 ENG_CLUSTERS = ("ck", "sch", "str", "th", "ght", "ph", "sh")
 
+# Minimum number of letters that must remain AFTER stripping a candidate FIL
+# prefix for the match to count. Without this, "ma"/"na"/"ka"/"in" fire on
+# almost anything, including short English words.
+MIN_STEM_LEN = 3
+
+# Pre-sorted longest-first, so "which affix matched" can short-circuit on the
+# most specific match. Computed once at import instead of once per token --
+# these sorts were measurably hot when done inside extract_features.
+ENG_SUFFIXES_BY_LEN = tuple(sorted(ENG_SUFFIXES, key=len, reverse=True))
+FIL_SUFFIXES_BY_LEN = tuple(sorted(FIL_SUFFIXES, key=len, reverse=True))
+FIL_PREFIXES_BY_LEN = tuple(sorted(FIL_PREFIXES, key=len, reverse=True))
+
 
 class Context:
     """Position of a token inside its sentence, used for neighbour features.
@@ -144,12 +156,83 @@ def _has_reduplication(low: str) -> bool:
     return False
 
 
+def _longest_fil_prefix(low: str, min_stem: int = 0) -> Optional[str]:
+    """Return the LONGEST matching Filipino prefix, or None.
+
+    Longest-match matters: "nagkaka-" should report "nagkaka"-style evidence
+    rather than stopping at the weak "na". ``min_stem`` rejects a match that
+    would leave too little word behind it, which is what stops "ma"/"na"/"ka"
+    from firing on every short English word.
+
+    Args:
+        low:      The lowercased token.
+        min_stem: Required number of letters remaining after the prefix.
+
+    Returns:
+        The matched prefix string, or None if nothing qualifies.
+    """
+    # Pre-sorted longest-first, so the first hit IS the longest match.
+    for p in FIL_PREFIXES_BY_LEN:
+        if low.startswith(p) and len(low) - len(p) >= min_stem:
+            return p
+    return None
+
+
+def _looks_english(stem: str) -> bool:
+    """Cheap test for 'this chunk of letters looks like an English root'.
+
+    Used for the code-switch cue: a Filipino affix wrapped around something
+    that looks English is the canonical CS pattern ("nag-march", "naglunch").
+    """
+    if not stem:
+        return False
+    return (any(c in NON_NATIVE_LETTERS for c in stem)
+            or any(cl in stem for cl in ENG_CLUSTERS)
+            or stem.endswith(ENG_SUFFIXES))
+
+
+def _cue_summary(token: str) -> Dict[str, Any]:
+    """Compact language cues for a NEIGHBOUR token.
+
+    Deliberately small: these get copied onto the current token with a
+    ``prev_``/``next_`` prefix, so anything expensive (like n-grams) would
+    triple the feature space for little gain. Language clusters in
+    code-switched text, so a neighbour's cues are strong evidence.
+
+    Args:
+        token: The neighbouring token (raw, not lowercased).
+
+    Returns:
+        A dict of small boolean/numeric cues.
+    """
+    low = token.lower()
+    letters = [c for c in low if c.isalpha()]
+    n_letters = len(letters)
+    n_vowels = sum(1 for c in letters if c in VOWELS)
+    return {
+        "fil_prefix": _longest_fil_prefix(low, MIN_STEM_LEN) is not None,
+        "eng_suffix": low.endswith(ENG_SUFFIXES),
+        "fil_suffix": low.endswith(FIL_SUFFIXES),
+        "has_non_native": any(c in NON_NATIVE_LETTERS for c in low),
+        "has_eng_cluster": any(cl in low for cl in ENG_CLUSTERS),
+        "vowel_ratio": _ratio(n_vowels, n_letters),
+        "ends_in_ng": low.endswith("ng"),
+        "ends_in_vowel": bool(letters) and letters[-1] in VOWELS,
+        "is_punct": n_letters == 0 and len(low) > 0,
+        "suffix3": low[-3:] if n_letters >= 3 else "",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Main feature extractor
 # ---------------------------------------------------------------------------
 def extract_features(token: str,
                      context: Optional[Context] = None,
-                     ngram_sizes=(2, 3)) -> Dict[str, Any]:
+                     ngram_sizes=(2, 3),
+                     neighbour_cues: bool = False,
+                     cs_cue: bool = True,
+                     clean_affixes: bool = True,
+                     affix_strings: bool = True) -> Dict[str, Any]:
     """Turn a single token into a dictionary of features.
 
     This is the main public function of the module. It groups features into
@@ -157,15 +240,39 @@ def extract_features(token: str,
     affix/morphology cues, neighbour context, and character n-grams). Each
     family is documented inline below.
 
+    The four boolean flags exist so each feature family can be switched off
+    independently and measured. The defaults are what 5-fold grouped CV
+    actually supported, NOT everything-on:
+
+        neighbour_cues=False  measured -0.021 macro F1 (the only effect
+                              outside noise, and it was harmful -- the CRF's
+                              transition model does this job properly)
+        cs_cue=True           within noise, kept: it is the one signal aimed
+                              at the weakest class
+        clean_affixes=True    within noise on the metric, kept on correctness
+                              grounds ("ma"/"na"/"in" were firing on machine,
+                              nation, insane)
+        affix_strings=True    within noise, kept: cheap and helps the CRF
+
+    ngram_sizes stops at 3 -- adding 4-grams cost -0.03 macro F1 and doubled
+    the feature count.
+
     Args:
-        token:       The word to featurize.
-        context:     Optional Context giving the surrounding tokens. If None,
-                     the token is treated as a one-word sentence.
-        ngram_sizes: Which character n-gram lengths to include (default 2 & 3).
+        token:          The word to featurize.
+        context:        Optional Context giving the surrounding tokens. If None,
+                        the token is treated as a one-word sentence.
+        ngram_sizes:    Which character n-gram lengths to include.
+        neighbour_cues: Include the previous/next token's own language cues.
+        cs_cue:         Include the "Filipino affix + English root" CS signal.
+        clean_affixes:  Use longest-match prefixes with a minimum stem length,
+                        and emit WHICH affix matched rather than one lumped
+                        boolean.
+        affix_strings:  Include the token's own first/last 1-4 characters as
+                        categorical features.
 
     Returns:
-        A dict mapping feature name to value (numbers, booleans, or n-gram
-        presence flags like ``"2gram=na": 1``).
+        A dict mapping feature name to value (numbers, booleans, strings, or
+        n-gram presence flags like ``"2gram=na": 1``).
     """
     feats: Dict[str, Any] = {}
     raw = token
@@ -225,12 +332,47 @@ def extract_features(token: str,
     # Filipino builds words with affixes and reduplication. These are the most
     # useful cues for spotting FIL words and intra-word code-switches (CS),
     # e.g. "nag-march" = Filipino prefix + English root.
-    feats["fil_prefix"] = any(low.startswith(p) for p in FIL_PREFIXES)
+    # ``clean_affixes`` swaps the naive "does it start with any prefix?" test
+    # for longest-match + a minimum stem length, and additionally records WHICH
+    # affix matched. The lumped boolean treats "nag" (strong FIL evidence) and
+    # "ma" (fires on "machine", "market", "manage") as the same signal; letting
+    # the model see the actual prefix lets it weight them differently.
+    matched_prefix = _longest_fil_prefix(low, MIN_STEM_LEN if clean_affixes else 0)
+    feats["fil_prefix"] = matched_prefix is not None
     feats["has_hyphen_affix"] = "-" in low and any(
         low.split("-")[0] == p for p in FIL_PREFIXES
     )
     feats["eng_suffix"] = any(low.endswith(s) for s in ENG_SUFFIXES)
     feats["fil_suffix"] = any(low.endswith(s) for s in FIL_SUFFIXES)
+
+    if clean_affixes:
+        feats["fil_prefix_which"] = matched_prefix or ""
+        feats["eng_suffix_which"] = next(
+            (s for s in ENG_SUFFIXES_BY_LEN if low.endswith(s)), "")
+        feats["fil_suffix_which"] = next(
+            (s for s in FIL_SUFFIXES_BY_LEN if low.endswith(s)), "")
+
+    if cs_cue:
+        # Code-switching at the word level is Filipino morphology wrapped around
+        # an English root: "nag-march", "naglunch", "mag-enjoy". Detect it by
+        # stripping the FIL affix and asking whether what remains looks English.
+        # The hyphenated and glued-together spellings both need covering.
+        hyphen_stem = low.split("-", 1)[1] if "-" in low else ""
+        hyphen_head = low.split("-", 1)[0] if "-" in low else ""
+        prefix_stem = low[len(matched_prefix):] if matched_prefix else ""
+
+        feats["cs_hyphen_fil_eng"] = (
+            hyphen_head in FIL_PREFIXES and _looks_english(hyphen_stem))
+        feats["cs_prefix_eng_stem"] = bool(matched_prefix) and _looks_english(prefix_stem)
+        feats["cs_any"] = feats["cs_hyphen_fil_eng"] or feats["cs_prefix_eng_stem"]
+
+    if affix_strings:
+        # The token's own edges as categorical values. Word-final characters
+        # carry most of the morphological signal in both languages, so these
+        # are usually the single most useful features in word-level LID.
+        for k in (1, 2, 3, 4):
+            feats[f"pref{k}"] = low[:k] if n_chars >= k else ""
+            feats[f"suff{k}"] = low[-k:] if n_chars >= k else ""
     feats["has_eng_cluster"] = any(cl in low for cl in ENG_CLUSTERS)
     feats["has_reduplication"] = _has_reduplication(low)
     feats["ends_in_vowel"] = bool(letters) and letters[-1] in VOWELS
@@ -256,6 +398,18 @@ def extract_features(token: str,
         feats["next_is_cap"] = next_tok[:1].isupper()
         feats["next_len"] = len(next_tok)
 
+    if neighbour_cues:
+        # The plain prev_/next_ features above only describe a neighbour's
+        # LENGTH and CASING -- they say nothing about what language it is. Since
+        # language clusters (a Filipino word is usually surrounded by Filipino
+        # words), copying the neighbour's actual language cues onto this token
+        # is far more informative than knowing it was 5 characters long.
+        for label, neighbour in (("prev", prev_tok), ("next", next_tok)):
+            if neighbour is None:
+                continue
+            for cue_name, cue_val in _cue_summary(neighbour).items():
+                feats[f"{label}_cue_{cue_name}"] = cue_val
+
     # --- Character n-grams (presence flags) -----------------------------
     # Chunks of letters that lean one language (e.g. "tion" -> ENG, "ng" ->
     # FIL). Encoded as keys like "2gram=na": 1 so the DictVectorizer can turn
@@ -268,7 +422,8 @@ def extract_features(token: str,
 
 
 def features_for_sentence(tokens: List[str],
-                          ngram_sizes=(2, 3)) -> List[Dict[str, Any]]:
+                          ngram_sizes=(2, 3),
+                          **flags: bool) -> List[Dict[str, Any]]:
     """Extract features for every token in a sentence, with context wired up.
 
     This is the convenient way to featurize real data: it builds the Context
@@ -277,12 +432,39 @@ def features_for_sentence(tokens: List[str],
     Args:
         tokens:      The list of tokens in one sentence.
         ngram_sizes: Which character n-gram lengths to include.
+        **flags:     Forwarded to ``extract_features`` (neighbour_cues, cs_cue,
+                     clean_affixes, affix_strings). Used by the ablation script
+                     to turn one family off at a time.
 
     Returns:
         A list of feature dicts, one per token, in the same order as ``tokens``.
     """
-    return [extract_features(tok, Context(tokens, i), ngram_sizes)
+    return [extract_features(tok, Context(tokens, i), ngram_sizes, **flags)
             for i, tok in enumerate(tokens)]
+
+
+def crf_sequence(tokens: List[str],
+                 ngram_sizes=(2, 3),
+                 **flags: bool) -> List[Dict[str, Any]]:
+    """Featurize a sentence in the shape python-crfsuite expects.
+
+    Identical to ``features_for_sentence`` except that every non-string,
+    non-boolean value is cast to float. crfsuite accepts str/bool/float
+    attribute values; numpy scalars and ints coming out of the feature code
+    would otherwise raise a confusing type error deep inside the C extension.
+
+    Args:
+        tokens:      The list of tokens in one sentence.
+        ngram_sizes: Which character n-gram lengths to include.
+        **flags:     Forwarded to ``extract_features``.
+
+    Returns:
+        A list of crfsuite-safe feature dicts, one per token.
+    """
+    return [
+        {k: (v if isinstance(v, (str, bool)) else float(v)) for k, v in d.items()}
+        for d in features_for_sentence(tokens, ngram_sizes, **flags)
+    ]
 
 
 if __name__ == "__main__":

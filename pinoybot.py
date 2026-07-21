@@ -12,36 +12,46 @@ import os
 import pickle
 from pathlib import Path
 from typing import List
-from features import features_for_sentence
+from features import crf_sequence
 
 _HERE = Path(__file__).resolve().parent
 MODEL_DIR = _HERE / "model_output"
 MODEL_PATH = MODEL_DIR / "pinoybot_language-model.pkl"
 VALID_TAGS = {"ENG", "FIL", "CS", "OTH"}
 FALLBACK_TAG = "OTH"
-_pipeline = None
+_model = None
 
-def _load_pipeline():
-    """Load the trained Pipeline (vectorizer + classifier) from disk, once.
- 
+def _load_model():
+    """Load the trained CRF from disk, once.
+
     Raises:
         FileNotFoundError: with a clear message if the model file is missing,
             so the failure is obvious instead of a cryptic pickle error.
+        ImportError: if sklearn-crfsuite is not installed. Unpickling a CRF
+            needs the library present, and the default error does not say so.
     """
-    global _pipeline
- 
-    if _pipeline is not None:
+    global _model
+
+    if _model is not None:
         return
- 
+
     if not MODEL_PATH.exists():
         raise FileNotFoundError(
             f"Could not find trained model at {MODEL_PATH}. "
             "Make sure model_output/pinoybot_language-model.pkl is present "
             "next to pinoybot.py (run model.py's train_model() first)."
         )
- 
+
+    try:
+        import sklearn_crfsuite  # noqa: F401  (needed to unpickle the CRF)
+    except ImportError as exc:
+        raise ImportError(
+            "pinoybot's model is a CRF, which needs the 'sklearn-crfsuite' "
+            "package to load. Install it with:  pip install sklearn-crfsuite"
+        ) from exc
+
     with open(MODEL_PATH, "rb") as f:
-        _pipeline = pickle.load(f)
+        _model = pickle.load(f)
 
 # Main tagging function
 def tag_language(tokens: List[str]) -> List[str]:
@@ -57,19 +67,18 @@ def tag_language(tokens: List[str]) -> List[str]:
     if not tokens:
         return []
     
-    # 1. Load your trained model from disk (e.g., using pickle or joblib)
-    #    Example: with open('trained_model.pkl', 'rb') as f: model = pickle.load(f)
-    #    (Replace with your actual model loading code)
-    _load_pipeline()
+    # 1. Load the trained CRF from disk (cached after the first call)
+    _load_model()
 
-    # 2. Extract features from the input tokens to create the feature matrix
-    #    Example: features = ... (your feature extraction logic here)
-    feature_dicts = features_for_sentence(list(tokens))
-    
-    
-    # 3. Use the model to predict the tags for each token
-    #    Example: predicted = model.predict(features)
-    predicted = _pipeline.predict(feature_dicts)
+    # 2. Extract features for the whole sentence at once. The CRF labels a
+    #    sentence jointly rather than word by word, so the tokens must stay
+    #    together as one sequence -- that shared context is where its accuracy
+    #    over a per-word classifier comes from.
+    sequence = crf_sequence(list(tokens))
+
+    # 3. Predict. The CRF takes a LIST of sentences and returns a list of tag
+    #    sequences, so wrap the one sentence and unwrap the one result.
+    predicted = _model.predict([sequence])[0]
 
     # 4. Convert the predictions to a list of strings ("ENG", "FIL", or "OTH")
     #    Example: tags = [str(tag) for tag in predicted]
