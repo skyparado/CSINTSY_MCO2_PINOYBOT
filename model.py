@@ -17,11 +17,8 @@ MODEL_PATH = MODEL_DIR / "pinoybot_language-model.pkl"
     
     
 def load_pipeline(filename: str): 
-    """
-      Loads the generated pipeline from the pipeline_output directory.
-      Returns the X and y data from the pipeline file. (test, train, or validation) 
-    """
-    file_path = PIPELINE_PATH / filename #makesure filename input includes .pkl 
+    
+    file_path = PIPELINE_PATH / filename 
     if not file_path.exists():
         raise FileNotFoundError(
             f"ERROR: Pipeline file '{filename}' not found in '{PIPELINE_PATH}' ensure data_pipeline.py has been run and that the correct filename is provided."
@@ -33,12 +30,7 @@ def load_pipeline(filename: str):
 
 
 def train_model():
-    """
-        Trains the pinoybot language model with SGDClassifier using the generated data from data_pipeline.py
-        The trained model is saved to the model_output directory as 'pinoybot_language-model.pkl' and evaluated on the test and validation datasets.
-        The classification report, confusion matrix, and accuracy scores are printed to the console for visual validation of the model performance.
-    """
-    # Load the training, testing, and validation data from the pipeline files
+
     print(f"Loading pipeline results...\n")
     X_train, y_train = load_pipeline("train.pkl")
     X_test, y_test = load_pipeline("test.pkl")
@@ -48,18 +40,15 @@ def train_model():
     print(f"Testing data size: {len(X_test)} words")
     print(f"Validation data size: {len(X_val)} words\n")
 
-    # Create classifier pipeline for training pinoybot language model.
     clf_pipeline = Pipeline([
-        ("vectorizer", DictVectorizer(sparse=True)), # use DictVectorizer to convert feature dictionaries to a sparse matrix
-        ("caster", Sparse32Caster()),
-        ("classifier", SGDClassifier(loss="hinge", class_weight="balanced", random_state=42, n_jobs=-1))    
-        ])
+        ("vectorizer", DictVectorizer(sparse=True)), 
+        ("caster", Sparse32Caster()), 
+        ("classifier", SGDClassifier(loss="hinge", class_weight="balanced", random_state=42, n_jobs=-1))   
+    ])
 
-    # Train the model 
     print(f"Training model...\n")
     clf_pipeline.fit(X_train, y_train) 
 
-    # Model Evaluation
     print("Evaluate pinoybot on Validation Data:")
     print(f"------------------------------------------------")
     y_validation_pred = clf_pipeline.predict(X_val)
@@ -72,7 +61,6 @@ def train_model():
     print("Test Performance:")
     print(classification_report(y_test, y_test_pred))
     
-    # Print confusion matrix for test data to visualize model performance
     cm = confusion_matrix(y_test, y_test_pred, labels=clf_pipeline.classes_)
     cm_df = pd.DataFrame(
         cm,
