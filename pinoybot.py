@@ -10,6 +10,7 @@ Model training and feature extraction should be implemented in a separate script
 
 import os
 import pickle
+import cloudpickle
 from pathlib import Path
 from typing import List
 from features import features_for_sentence
@@ -41,7 +42,7 @@ def _load_pipeline():
         )
  
     with open(MODEL_PATH, "rb") as f:
-        _pipeline = pickle.load(f)
+        _pipeline = cloudpickle.load(f)
 
 # Main tagging function
 def tag_language(tokens: List[str]) -> List[str]:
@@ -94,3 +95,22 @@ if __name__ == "__main__":
     print("Tokens:", example_tokens)
     tags = tag_language(example_tokens)
     print("Tags:", tags)
+    
+    # Demo Examples
+    #demo_examples = [
+     #   ["I", "love", "you"],         
+     #  ["Mahal", "kita", "."],        
+     #   ["Ang", "cute", "mo"],          
+     #   ["Kain", "tayo", "later"],     
+     #   ["Sige", "na", "please"],      
+     #   ["Grabe", "ang", "ganda"],     
+     #  ["See", "you", "bukas"],        
+     #   ["Wala", "akong", "pera"],      
+     #   ["Text", "mo", "ko"],           
+    #]
+
+    #for i, tokens in enumerate(demo_examples, start=1):
+    #    tags = tag_language(tokens)
+    #    print(f"\nDemo {i}:")
+    #    print("Tokens:", tokens)
+    #    print("Tags:  ", tags)

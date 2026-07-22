@@ -3,6 +3,7 @@ from dataclasses import dataclass, field           # dataclass = shortcut for ma
 from typing import Any, Dict, List, Optional, Tuple  # type hints only -- documentation for humans, not enforced by Python
 import json                                        # to write split_summary.json
 import pickle                                      # to save train/val/test as .pkl files
+import cloudpickle
 from collections import Counter                    # quick way to count how many FIL/ENG/CS/OTH labels are in a list
 
 import openpyxl                                    # library for reading .xlsx Excel files
@@ -235,7 +236,7 @@ def save_outputs(splits: Dict[str, Dict[str, list]], out_dir: Path = OUTPUT_DIR)
 
         with open(out_dir / f"{name}.pkl", "wb") as f:
             # "wb" = write, in binary mode (pickle files aren't plain text)
-            pickle.dump(data, f)
+            cloudpickle.dump(data, f)
             # save the entire "data" dict to this file, exactly as it is in memory
 
     summary = {

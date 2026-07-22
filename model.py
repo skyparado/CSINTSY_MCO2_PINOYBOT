@@ -1,5 +1,6 @@
 import os
 import pickle
+import cloudpickle
 import pandas as pd
 
 from pathlib import Path
@@ -24,7 +25,7 @@ def load_pipeline(filename: str):
         )
 
     with open(file_path, "rb") as file:
-        data = pickle.load(file)
+        data = cloudpickle.load(file)
     return data["X"], data["y"]
 
 
@@ -78,7 +79,7 @@ def train_model():
     
     os.makedirs(MODEL_DIR, exist_ok=True)
     with open(MODEL_PATH, "wb") as model_file:
-        pickle.dump(clf_pipeline, model_file)
+        cloudpickle.dump(clf_pipeline, model_file)
     print(f"Model saved as '{MODEL_PATH}'")
 
 if __name__ == "__main__":
