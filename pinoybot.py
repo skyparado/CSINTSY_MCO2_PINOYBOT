@@ -13,11 +13,17 @@ import pickle
 import cloudpickle
 from pathlib import Path
 from typing import List
-from features import features_for_sentence
+from features import features_for_sentence, Sparse32Caster
 
 _HERE = Path(__file__).resolve().parent
-MODEL_DIR = _HERE / "model_output"
-MODEL_PATH = MODEL_DIR / "pinoybot_language-model.pkl"
+
+POSSIBLE_MODEL_PATHS = [
+    _HERE / "model_output" / "pinoybot_language-model.pkl",
+    _HERE / "pinoybot_language-model.pkl",
+    Path("model_output/pinoybot_language-model.pkl"),
+    Path("pinoybot_language-model.pkl"),
+]
+
 VALID_TAGS = {"ENG", "FIL", "CS", "OTH"}
 FALLBACK_TAG = "OTH"
 _pipeline = None
@@ -30,20 +36,15 @@ def _load_pipeline():
             so the failure is obvious instead of a cryptic pickle error.
     """
     global _pipeline
- 
     if _pipeline is not None:
         return
- 
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(
-            f"Could not find trained model at {MODEL_PATH}. "
-            "Make sure model_output/pinoybot_language-model.pkl is present "
-            "next to pinoybot.py (run model.py's train_model() first)."
-        )
- 
-    with open(MODEL_PATH, "rb") as f:
-        _pipeline = cloudpickle.load(f)
 
+    model_path = next((p for p in POSSIBLE_MODEL_PATHS if p.exists()), None)
+    if model_path is None:
+        raise FileNotFoundError("Model file 'pinoybot_language-model.pkl' not found.")
+
+    with open(model_path, "rb") as f:
+        _pipeline = cloudpickle.load(f)
 # Main tagging function
 def tag_language(tokens: List[str]) -> List[str]:
     """

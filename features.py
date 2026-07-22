@@ -14,7 +14,9 @@ The public API is two functions:
     - features_for_sentence(tokens)    -> list[dict]
 Everything else is a helper.
 """
-
+import numpy as np
+import scipy.sparse as sp
+from sklearn.base import BaseEstimator, TransformerMixin
 from typing import List, Dict, Optional, Any
 
 # Vowels used for vowel-ratio style features.
@@ -79,7 +81,16 @@ class Context:
         i = self.index + 1
         return self.tokens[i] if 0 <= i < len(self.tokens) else None
 
+class Sparse32Caster(BaseEstimator, TransformerMixin):
+    """Casts sparse matrix indices to int32 to fix 64-bit array index errors."""
+    def fit(self, X, y=None):
+        return self
 
+    def transform(self, X):
+        if sp.issparse(X):
+            X.indices = X.indices.astype(np.int32)
+            X.indptr = X.indptr.astype(np.int32)
+        return X
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------

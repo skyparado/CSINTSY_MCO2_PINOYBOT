@@ -5,28 +5,15 @@ import numpy as np
 import scipy.sparse as sp
 
 from pathlib import Path
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from features import Sparse32Caster
 
 PIPELINE_PATH = Path(__file__).parent / "pipeline_output"
 MODEL_DIR = Path(__file__).parent / "model_output"
 MODEL_PATH = MODEL_DIR / "pinoybot_language-model.pkl"
-
-class Sparse32Caster(BaseEstimator, TransformerMixin):
-    """
-        Helper class that intercepts scipy sparse matrices and casts indices to int32 to prevent sklearn crashes.
-    """
-    def fit(self, X, y=None):
-        return self
-        
-    def transform(self, X):
-        if sp.issparse(X):
-            X.indices = X.indices.astype(np.int32)
-            X.indptr = X.indptr.astype(np.int32)
-        return X
     
     
 def load_pipeline(filename: str): 
@@ -64,7 +51,7 @@ def train_model():
     # Create classifier pipeline for training pinoybot language model.
     clf_pipeline = Pipeline([
         ("vectorizer", DictVectorizer(sparse=True)), # use DictVectorizer to convert feature dictionaries to a sparse matrix
-        ("caster", Sparse32Caster()), # use the helper class to convert indices to int32
+        ("caster", Sparse32Caster()),
         ("classifier", SGDClassifier(loss="hinge", class_weight="balanced", random_state=42, n_jobs=-1))    
         ])
 
