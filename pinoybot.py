@@ -18,7 +18,6 @@ VALID_TAGS = {"ENG", "FIL", "CS", "OTH"}
 FALLBACK_TAG = "OTH"
 _pipeline = None
 
-#Load the trained Pipeline 
 def _load_pipeline():
     global _pipeline
     if _pipeline is not None:
@@ -31,22 +30,17 @@ def _load_pipeline():
     with open(model_path, "rb") as f:
         _pipeline = cloudpickle.load(f)
         
-# Main tagging function
+        
 def tag_language(tokens: List[str]) -> List[str]:    
-    # Edge case: empty input -> empty output. 
     if not tokens: 
         return []
     
-    # loads trained model
     _load_pipeline()
 
-    # Extracts features from the input tokens 
     feature_dicts = features_for_sentence(list(tokens))
     
-    # Uses model to predict tags
     predicted = _pipeline.predict(feature_dicts)
 
-    # Converts predictions to strings (ENG/FIL/OTH))
     tags = []
     for tag in predicted:
         tag = str(tag).strip().upper()
@@ -61,27 +55,8 @@ def tag_language(tokens: List[str]) -> List[str]:
 
     return tags
 
-
 if __name__ == "__main__":
     example_tokens = ["Love", "kita", "."]
     print("Tokens:", example_tokens)
     tags = tag_language(example_tokens)
     print("Tags:", tags)
-    
-    #demo_examples = [
-     #   ["I", "love", "you"],         
-     #  ["Mahal", "kita", "."],        
-     #   ["Ang", "cute", "mo"],          
-     #   ["Kain", "tayo", "later"],     
-     #   ["Sige", "na", "please"],      
-     #   ["Grabe", "ang", "ganda"],     
-     #  ["See", "you", "bukas"],        
-     #   ["Wala", "akong", "pera"],      
-     #   ["Text", "mo", "ko"],           
-    #]
-
-    #for i, tokens in enumerate(demo_examples, start=1):
-    #    tags = tag_language(tokens)
-    #    print(f"\nDemo {i}:")
-    #    print("Tokens:", tokens)
-    #    print("Tags:  ", tags)
